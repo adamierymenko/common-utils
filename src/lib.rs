@@ -7,7 +7,6 @@
  */
 
 pub mod arrayvec;
-pub mod base24;
 pub mod base64;
 pub mod blob;
 pub mod buffer;
