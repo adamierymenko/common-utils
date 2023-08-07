@@ -31,7 +31,10 @@ pub const NEVER_HAPPENED_TICKS: i64 = i64::MIN / 2;
 /// Get milliseconds since unix epoch.
 #[inline]
 pub fn ms_since_epoch() -> i64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64
 }
 
 /// Get an estimate of the number of CPU cores in the system.

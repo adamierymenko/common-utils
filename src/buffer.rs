@@ -406,7 +406,9 @@ impl<const L: usize> Buffer<L> {
         let end = ptr + 2;
         debug_assert!(end <= L);
         if end <= self.0 {
-            Ok(u16::from_be_bytes(unsafe { *self.1.as_ptr().add(ptr).cast::<[u8; 2]>() }))
+            Ok(u16::from_be_bytes(unsafe {
+                *self.1.as_ptr().add(ptr).cast::<[u8; 2]>()
+            }))
         } else {
             unlikely_branch();
             Err(OutOfBoundsError)
@@ -418,7 +420,9 @@ impl<const L: usize> Buffer<L> {
         let end = ptr + 4;
         debug_assert!(end <= L);
         if end <= self.0 {
-            Ok(u32::from_be_bytes(unsafe { *self.1.as_ptr().add(ptr).cast::<[u8; 4]>() }))
+            Ok(u32::from_be_bytes(unsafe {
+                *self.1.as_ptr().add(ptr).cast::<[u8; 4]>()
+            }))
         } else {
             unlikely_branch();
             Err(OutOfBoundsError)
@@ -430,7 +434,9 @@ impl<const L: usize> Buffer<L> {
         let end = ptr + 8;
         debug_assert!(end <= L);
         if end <= self.0 {
-            Ok(u64::from_be_bytes(unsafe { *self.1.as_ptr().add(ptr).cast::<[u8; 8]>() }))
+            Ok(u64::from_be_bytes(unsafe {
+                *self.1.as_ptr().add(ptr).cast::<[u8; 8]>()
+            }))
         } else {
             unlikely_branch();
             Err(OutOfBoundsError)
@@ -499,7 +505,9 @@ impl<const L: usize> Buffer<L> {
         debug_assert!(end <= L);
         if end <= self.0 {
             *cursor = end;
-            Ok(u16::from_be_bytes(unsafe { *self.1.as_ptr().add(ptr).cast::<[u8; 2]>() }))
+            Ok(u16::from_be_bytes(unsafe {
+                *self.1.as_ptr().add(ptr).cast::<[u8; 2]>()
+            }))
         } else {
             unlikely_branch();
             Err(OutOfBoundsError)
@@ -513,7 +521,9 @@ impl<const L: usize> Buffer<L> {
         debug_assert!(end <= L);
         if end <= self.0 {
             *cursor = end;
-            Ok(u32::from_be_bytes(unsafe { *self.1.as_ptr().add(ptr).cast::<[u8; 4]>() }))
+            Ok(u32::from_be_bytes(unsafe {
+                *self.1.as_ptr().add(ptr).cast::<[u8; 4]>()
+            }))
         } else {
             unlikely_branch();
             Err(OutOfBoundsError)
@@ -527,7 +537,9 @@ impl<const L: usize> Buffer<L> {
         debug_assert!(end <= L);
         if end <= self.0 {
             *cursor = end;
-            Ok(u64::from_be_bytes(unsafe { *self.1.as_ptr().add(ptr).cast::<[u8; 8]>() }))
+            Ok(u64::from_be_bytes(unsafe {
+                *self.1.as_ptr().add(ptr).cast::<[u8; 8]>()
+            }))
         } else {
             unlikely_branch();
             Err(OutOfBoundsError)

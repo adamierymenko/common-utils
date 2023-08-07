@@ -596,13 +596,21 @@ impl InetAddress {
                 }
                 #[cfg(not(windows))]
                 {
-                    copy_nonoverlapping(ip2.as_ptr(), (&mut self.sin.sin_addr.s_addr as *mut u32).cast::<u8>(), 4);
+                    copy_nonoverlapping(
+                        ip2.as_ptr(),
+                        (&mut self.sin.sin_addr.s_addr as *mut u32).cast::<u8>(),
+                        4,
+                    );
                 }
                 AF_INET
             } else if ip2.len() == 16 {
                 self.sin6.sin6_family = AF_INET6.into();
                 self.sin6.sin6_port = port.into();
-                copy_nonoverlapping(ip2.as_ptr(), (&mut self.sin6.sin6_addr as *mut in6_addr).cast::<u8>(), 16);
+                copy_nonoverlapping(
+                    ip2.as_ptr(),
+                    (&mut self.sin6.sin6_addr as *mut in6_addr).cast::<u8>(),
+                    16,
+                );
                 AF_INET6
             } else {
                 0
@@ -637,11 +645,17 @@ impl InetAddress {
                 AF_INET => {
                     #[cfg(windows)]
                     {
-                        (*(self.sin.sin_addr.S_un.S_addr() as *const u32) as u128, self.sin.sin_port as u16)
+                        (
+                            *(self.sin.sin_addr.S_un.S_addr() as *const u32) as u128,
+                            self.sin.sin_port as u16,
+                        )
                     }
                     #[cfg(not(windows))]
                     {
-                        (*(&self.sin.sin_addr.s_addr as *const u32) as u128, self.sin.sin_port as u16)
+                        (
+                            *(&self.sin.sin_addr.s_addr as *const u32) as u128,
+                            self.sin.sin_port as u16,
+                        )
                     }
                 }
                 AF_INET6 => (
@@ -897,10 +911,16 @@ impl ToFromBytes for InetAddress {
         r.read_exact(&mut b[..1])?;
         if b[0] == 4 {
             r.read_exact(&mut b[..6])?;
-            Ok(InetAddress::from_ip_port(&b[0..4], u16::from_be_bytes(b[4..6].try_into().unwrap())))
+            Ok(InetAddress::from_ip_port(
+                &b[0..4],
+                u16::from_be_bytes(b[4..6].try_into().unwrap()),
+            ))
         } else if b[0] == 6 {
             r.read_exact(&mut b[..18])?;
-            Ok(InetAddress::from_ip_port(&b[0..16], u16::from_be_bytes(b[16..18].try_into().unwrap())))
+            Ok(InetAddress::from_ip_port(
+                &b[0..16],
+                u16::from_be_bytes(b[16..18].try_into().unwrap()),
+            ))
         } else {
             return Ok(InetAddress::new());
         }
@@ -920,7 +940,11 @@ impl ToFromBytes for InetAddress {
                 AF_INET6 => {
                     let mut b = [0u8; 19];
                     b[0] = 6;
-                    copy_nonoverlapping((&(self.sin6.sin6_addr) as *const in6_addr).cast::<u8>(), b.as_mut_ptr().offset(1), 16);
+                    copy_nonoverlapping(
+                        (&(self.sin6.sin6_addr) as *const in6_addr).cast::<u8>(),
+                        b.as_mut_ptr().offset(1),
+                        16,
+                    );
                     b[17] = *(&self.sin6.sin6_port as *const u16).cast::<u8>();
                     b[18] = *(&self.sin6.sin6_port as *const u16).cast::<u8>().offset(1);
                     return w.write_all(&b);
@@ -987,13 +1011,21 @@ impl FromStr for InetAddress {
                                 }
                                 #[cfg(not(windows))]
                                 {
-                                    copy_nonoverlapping(v4.octets().as_ptr(), (&mut (addr.sin.sin_addr.s_addr) as *mut u32).cast(), 4);
+                                    copy_nonoverlapping(
+                                        v4.octets().as_ptr(),
+                                        (&mut (addr.sin.sin_addr.s_addr) as *mut u32).cast(),
+                                        4,
+                                    );
                                 }
                             }
                             IpAddr::V6(v6) => {
                                 addr.sin6.sin6_family = AF_INET6.into();
                                 addr.sin6.sin6_port = port.into();
-                                copy_nonoverlapping(v6.octets().as_ptr(), (&mut (addr.sin6.sin6_addr) as *mut in6_addr).cast(), 16);
+                                copy_nonoverlapping(
+                                    v6.octets().as_ptr(),
+                                    (&mut (addr.sin6.sin6_addr) as *mut in6_addr).cast(),
+                                    16,
+                                );
                             }
                         }
                     }
@@ -1011,11 +1043,16 @@ impl PartialEq for InetAddress {
         unsafe {
             if self.sa.sa_family == other.sa.sa_family {
                 match self.sa.sa_family as AddressFamilyType {
-                    AF_INET => self.sin.sin_port == other.sin.sin_port && get_s_addr(&self.sin) == get_s_addr(&other.sin),
+                    AF_INET => {
+                        self.sin.sin_port == other.sin.sin_port && get_s_addr(&self.sin) == get_s_addr(&other.sin)
+                    }
                     AF_INET6 => {
                         if self.sin6.sin6_port == other.sin6.sin6_port {
-                            (*(&(self.sin6.sin6_addr) as *const in6_addr).cast::<[u8; 16]>())
-                                .eq(&*(&(other.sin6.sin6_addr) as *const in6_addr).cast::<[u8; 16]>())
+                            (*(&(self.sin6.sin6_addr) as *const in6_addr).cast::<[u8; 16]>()).eq(&*(&(other
+                                .sin6
+                                .sin6_addr)
+                                as *const in6_addr)
+                                .cast::<[u8; 16]>())
                         } else {
                             false
                         }
@@ -1047,7 +1084,8 @@ impl Ord for InetAddress {
                 match self.sa.sa_family as AddressFamilyType {
                     0 => Ordering::Equal,
                     AF_INET => {
-                        let ip_ordering = u32::from_be(get_s_addr(&self.sin)).cmp(&u32::from_be(get_s_addr(&other.sin)));
+                        let ip_ordering =
+                            u32::from_be(get_s_addr(&self.sin)).cmp(&u32::from_be(get_s_addr(&other.sin)));
                         if ip_ordering == Ordering::Equal {
                             u16::from_be(self.sin.sin_port).cmp(&u16::from_be(other.sin.sin_port))
                         } else {
@@ -1066,8 +1104,9 @@ impl Ord for InetAddress {
                     }
                     _ => {
                         // This shouldn't be possible, but handle it for correctness.
-                        (*slice_from_raw_parts((self as *const Self).cast::<u8>(), size_of::<Self>()))
-                            .cmp(&*slice_from_raw_parts((other as *const Self).cast::<u8>(), size_of::<Self>()))
+                        (*slice_from_raw_parts((self as *const Self).cast::<u8>(), size_of::<Self>())).cmp(
+                            &*slice_from_raw_parts((other as *const Self).cast::<u8>(), size_of::<Self>()),
+                        )
                     }
                 }
             } else {
