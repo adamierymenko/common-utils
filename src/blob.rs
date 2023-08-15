@@ -12,6 +12,7 @@ use std::hash::Hash;
 use std::ops::Deref;
 use std::ops::DerefMut;
 
+use serde::ser::SerializeTuple;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use zeroize::Zeroize;
 
@@ -124,7 +125,14 @@ impl<const L: usize> Serialize for Blob<L> {
         if serializer.is_human_readable() {
             base64::to_string(&self.0).serialize(serializer)
         } else {
-            serializer.serialize_bytes(&self.0)
+            // Serde will alway include a length field in binary formats unless we tell it this type
+            // is specifically a statically sized tuple
+            // This is actually the recommended way to serialize a [u8; _] according to serde's docs
+            let mut tuple = serializer.serialize_tuple(L)?;
+            for b in &self.0 {
+                tuple.serialize_element(b)?;
+            }
+            tuple.end()
         }
     }
 }
@@ -159,6 +167,19 @@ impl<'de, const L: usize> serde::de::Visitor<'de> for BlobVisitor<L> {
             .map(|b| Blob::<L>(b))
             .map_err(|_| serde::de::Error::invalid_length(v.len(), &self))
     }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+    where
+        A: serde::de::SeqAccess<'de>,
+    {
+        let mut bytes = [0u8; L];
+
+        for i in 0..L {
+            bytes[i] = seq.next_element()?.ok_or_else(|| serde::de::Error::invalid_length(i, &self))?;
+        }
+
+        Ok(Blob(bytes))
+    }
 }
 
 impl<'de, const L: usize> Deserialize<'de> for Blob<L> {
@@ -170,7 +191,7 @@ impl<'de, const L: usize> Deserialize<'de> for Blob<L> {
         if deserializer.is_human_readable() {
             deserializer.deserialize_str(BlobVisitor::<L>)
         } else {
-            deserializer.deserialize_bytes(BlobVisitor::<L>)
+            deserializer.deserialize_tuple(L, BlobVisitor::<L>)
         }
     }
 }
