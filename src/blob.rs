@@ -9,6 +9,8 @@
 use std::array::TryFromSliceError;
 use std::fmt::Debug;
 use std::hash::Hash;
+use std::ops::Deref;
+use std::ops::DerefMut;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use zeroize::Zeroize;
@@ -31,6 +33,19 @@ impl<const L: usize> Blob<L> {
     #[inline(always)]
     pub const fn len(&self) -> usize {
         L
+    }
+}
+
+impl<const L: usize> DerefMut for Blob<L> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+impl<const L: usize> Deref for Blob<L> {
+    type Target = [u8; L];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
