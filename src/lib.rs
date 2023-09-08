@@ -9,6 +9,7 @@
 pub mod arrayvec;
 pub mod base64;
 pub mod blob;
+pub mod buf;
 pub mod buffer;
 pub mod cast;
 pub mod dictionary;
