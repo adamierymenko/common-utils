@@ -9,8 +9,11 @@
 use std::array::TryFromSliceError;
 use std::fmt::Debug;
 use std::hash::Hash;
+use std::ops::Deref;
+use std::ops::DerefMut;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use zeroize::Zeroize;
 
 use crate::base64;
 use crate::hex;
@@ -18,7 +21,7 @@ use crate::hex;
 /// Fixed size Serde serializable byte array.
 /// This makes it easier to deal with blobs larger than 32 bytes (due to serde array limitations)
 #[repr(transparent)]
-#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Zeroize)]
 pub struct Blob<const L: usize>([u8; L]);
 
 impl<const L: usize> Blob<L> {
@@ -30,6 +33,19 @@ impl<const L: usize> Blob<L> {
     #[inline(always)]
     pub const fn len(&self) -> usize {
         L
+    }
+}
+
+impl<const L: usize> DerefMut for Blob<L> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+impl<const L: usize> Deref for Blob<L> {
+    type Target = [u8; L];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
