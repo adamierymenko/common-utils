@@ -9,7 +9,6 @@
 use std::io::{Read, Write};
 
 use super::arrayvec::ArrayVec;
-use super::buffer::{Buffer, BufferReader};
 
 /// Trait for types that implement easy conversion to/from bytes either as slices or I/O streams.
 /// The associated implement_serialize and implement_deserialize macros implement serde serialization
@@ -17,14 +16,6 @@ use super::buffer::{Buffer, BufferReader};
 pub trait ToFromBytes: Sized {
     fn read_bytes<R: Read>(r: &mut R) -> std::io::Result<Self>;
     fn write_bytes<W: Write>(&self, w: &mut W) -> std::io::Result<()>;
-
-    fn read_from_buffer<const BL: usize>(&self, b: &Buffer<BL>, cursor: &mut usize) -> std::io::Result<Self> {
-        Self::read_bytes(&mut BufferReader::new(b, cursor))
-    }
-
-    fn write_to_buffer<const BL: usize>(&self, b: &mut Buffer<BL>) -> std::io::Result<()> {
-        self.write_bytes(b)
-    }
 
     fn from_bytes(mut b: &[u8]) -> std::io::Result<Self> {
         Self::read_bytes(&mut b)
