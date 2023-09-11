@@ -1,13 +1,24 @@
-use std::alloc::{alloc_zeroed, dealloc, Layout};
+use std::alloc::{alloc, dealloc, Layout};
 use std::io::Write;
 use std::mem::size_of;
-use std::ptr::{copy_nonoverlapping, slice_from_raw_parts, slice_from_raw_parts_mut};
+use std::ptr::{copy_nonoverlapping, drop_in_place, slice_from_raw_parts, slice_from_raw_parts_mut, write_bytes};
 use std::sync::Mutex;
 
-/// Thin buffer represented as just one pointer, with bulk allocation capability.
+const INDIVIDUAL_BUFFER_ALIGN: usize = size_of::<u32>();
+const POOL_ALIGN: usize = size_of::<*mut u8>();
+const BUFFER_HEADER_SIZE: usize = size_of::<u32>() * 2;
+const BUF_HDR_CAPACITY_POOLED_FLAG: u32 = 0x80000000;
+
+/// Thin buffer that can be allocated one by one or as part of a pool of contiguous memory.
 ///
 /// Buffers can be created one by one or in bulk using Pool. Buffers may also be cloned, but
 /// cloning a pooled buffer results in a one-off allocated buffer rather than a pooled one.
+///
+/// When a buffer is dropped it either deallocates or returns automatically to its pool
+/// depending on how it was created.
+///
+/// Internally a Buf just consists of one pointer, making it a simple value with near zero
+/// overhead to pass between functions.
 #[repr(transparent)]
 pub struct Buf(*mut u32);
 
@@ -15,22 +26,22 @@ impl Buf {
     /// Maximum allowed capacity of an individual buffer.
     pub const MAX_CAPACITY: usize = 0x7fffffff; // must leave left-most bit as flag
 
-    /// Create a new buffer with the given maximum capacity.
+    /// Allocate an individual buffer with the given capacity.
     /// Capacity must be less than MAX_CAPACITY or this panics.
     #[inline]
-    pub fn new(capacity: usize) -> Self {
-        assert!(capacity <= Self::MAX_CAPACITY);
+    pub fn new(buf_capacity: usize) -> Self {
+        assert!(buf_capacity <= Buf::MAX_CAPACITY && buf_capacity > 0 && (buf_capacity % 8) == 0);
         unsafe {
-            let b: *mut u32 = alloc_zeroed(Layout::from_size_align_unchecked(capacity + 8, 4)).cast();
+            let b: *mut u32 = alloc(Layout::from_size_align_unchecked(
+                buf_capacity + BUFFER_HEADER_SIZE,
+                INDIVIDUAL_BUFFER_ALIGN,
+            ))
+            .cast();
             assert!(!b.is_null());
-            *b.add(1) = capacity as u32;
+            *b = 0;
+            *b.add(1) = buf_capacity as u32;
             Self(b)
         }
-    }
-
-    #[inline(always)]
-    pub fn clear(&mut self) {
-        unsafe { *self.0 = 0 };
     }
 
     #[inline(always)]
@@ -39,8 +50,29 @@ impl Buf {
     }
 
     #[inline(always)]
+    pub fn is_empty(&self) -> bool {
+        unsafe { *self.0 == 0 }
+    }
+
+    #[inline(always)]
     pub fn capacity(&self) -> usize {
         unsafe { (*self.0.add(1) & 0x7fffffff) as usize }
+    }
+
+    #[inline(always)]
+    pub fn clear(&mut self) {
+        unsafe { *self.0 = 0 };
+    }
+
+    /// Clear buffer, resize, and fill with a value.
+    /// This will panic if `new_size` exceeds this buffer's capacity.
+    #[inline]
+    pub fn clear_and_resize(&mut self, new_size: usize, val: u8) {
+        assert!(new_size <= self.capacity());
+        unsafe {
+            *self.0 = new_size as u32;
+            write_bytes(self.0.cast::<u8>().add(8), val, new_size);
+        }
     }
 
     /// Attempt to append a slice and return true on success or false if the slice is too big.
@@ -69,7 +101,7 @@ impl Buf {
 impl AsRef<[u8]> for Buf {
     #[inline(always)]
     fn as_ref(&self) -> &[u8] {
-        self.as_slice()
+        unsafe { &*slice_from_raw_parts(self.0.cast::<u8>().add(8), *self.0 as usize) }
     }
 }
 
@@ -81,14 +113,9 @@ impl AsMut<[u8]> for Buf {
 }
 
 impl Write for Buf {
-    #[inline]
+    #[inline(always)]
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        let new_len = self.len() + buf.len();
-        if new_len <= self.capacity() {
-            unsafe {
-                *self.0 = new_len as u32;
-                copy_nonoverlapping(buf.as_ptr(), self.0.cast::<u8>().add(8), buf.len())
-            };
+        if self.append(buf) {
             Ok(buf.len())
         } else {
             Err(std::io::Error::new(
@@ -109,20 +136,26 @@ impl Drop for Buf {
     fn drop(&mut self) {
         unsafe {
             let cap = *self.0.add(1);
-            if cap.wrapping_shr(31) == 1 {
-                let pool_inner = &mut *self
+            if (cap & BUF_HDR_CAPACITY_POOLED_FLAG) != 0 {
+                self.clear();
+                let pool_inner = &mut **self
                     .0
                     .cast::<u8>()
-                    .offset(-(size_of::<*mut PoolInner>() as isize))
-                    .cast::<PoolInner>();
+                    .sub(size_of::<*mut PoolInner>())
+                    .cast::<*mut PoolInner>();
                 let mut pool = pool_inner.pool.lock().unwrap();
-                pool.0.push(self.0);
-                if pool.1 && pool.0.len() == pool_inner.pool_capacity {
+                assert_ne!(pool.0, pool_inner.pool_end);
+                *pool.0 = self.0;
+                pool.0 = pool.0.add(1);
+                if pool.0 == pool_inner.pool_end && pool.1 {
                     drop(pool);
-                    pool_inner.dealloc();
+                    PoolInner::dealloc(pool_inner);
                 }
             } else {
-                dealloc(self.0.cast(), Layout::from_size_align_unchecked((cap as usize) + 8, 4));
+                dealloc(
+                    self.0.cast(),
+                    Layout::from_size_align_unchecked((cap as usize) + BUFFER_HEADER_SIZE, INDIVIDUAL_BUFFER_ALIGN),
+                );
             }
         }
     }
@@ -150,21 +183,18 @@ unsafe impl Send for Buf {}
 
 struct PoolInner {
     buf_capacity: usize,
-    pool_capacity: usize,
-    pool: Mutex<(Vec<*mut u32>, bool)>, // pool, dropped flag
-}
-
-fn calc_pool_mem(buf_capacity: usize, pool_capacity: usize) -> usize {
-    assert_eq!((buf_capacity % 8), 0);
-    size_of::<PoolInner>() + ((buf_capacity + 8 + size_of::<*mut PoolInner>()) * pool_capacity)
+    layout: Layout,
+    pool: Mutex<(*mut *mut u32, bool)>, // pool cursor, dropped flag
+    pool_start: *mut *mut u32,
+    pool_end: *mut *mut u32,
 }
 
 impl PoolInner {
-    unsafe fn dealloc(&mut self) {
-        dealloc(
-            (self as *mut Self).cast(),
-            Layout::from_size_align_unchecked(calc_pool_mem(self.buf_capacity, self.pool_capacity), 8),
-        )
+    /// Drop and deallocate PoolInner
+    unsafe fn dealloc(self_ptr: *mut Self) {
+        let layout = (*self_ptr).layout;
+        drop_in_place(self_ptr);
+        dealloc(self_ptr.cast(), layout)
     }
 }
 
@@ -172,62 +202,82 @@ impl PoolInner {
 pub struct Pool(*mut PoolInner);
 
 impl Pool {
-    /// Create a new buffer pool from a single contiguous allocation
+    /// Allocate a pool of buffers as a single contiguous chunk of memory.
     ///
     /// * 'buf_capacity' - Capacity of each buffer, must be divisible by 8
     /// * 'pool_capacity' - Total number of buffers to allocate
     pub fn new(buf_capacity: usize, pool_capacity: usize) -> Self {
-        assert!(buf_capacity <= Buf::MAX_CAPACITY);
+        assert!(buf_capacity <= Buf::MAX_CAPACITY && buf_capacity > 0 && (buf_capacity % 8) == 0 && pool_capacity > 0);
         unsafe {
             // Allocate memory for PoolInner followed by pool_capacity Buf objects with each prefixed
             // by a pointer back to PoolInner.
-            let mem = alloc_zeroed(Layout::from_size_align_unchecked(
-                calc_pool_mem(buf_capacity, pool_capacity),
-                8,
-            ))
-            .cast::<PoolInner>();
+            let layout = Layout::from_size_align_unchecked(
+                size_of::<PoolInner>()
+                    + (size_of::<*mut u32>() * pool_capacity)
+                    + ((buf_capacity + BUFFER_HEADER_SIZE + size_of::<*mut PoolInner>()) * pool_capacity),
+                POOL_ALIGN,
+            );
+            let mem = alloc(layout).cast::<PoolInner>();
             assert!(!mem.is_null());
 
-            // Initialize PoolInner
+            // Array of pointers to buf objects starts immediately after PoolInner.
+            let mut pool: *mut *mut u32 = mem.add(1).cast();
+            let pool_end = pool.add(pool_capacity);
+
+            // Initialize PoolInner at the start of congiuously allocated memory.
             std::ptr::write(
                 mem,
                 PoolInner {
                     buf_capacity,
-                    pool_capacity,
-                    pool: Mutex::new((Vec::with_capacity(pool_capacity), false)),
+                    layout,
+                    pool: Mutex::new((pool_end, false)),
+                    pool_start: pool,
+                    pool_end,
                 },
             );
 
-            // Fill pool with Buf objects initialized from contiguous memory after PoolInner struct.
-            let mut pool = (&mut *mem).pool.lock().unwrap();
-            let mut buf_ptr: *mut u8 = mem.add(1).cast();
-            let buf_size = buf_capacity + 8 + size_of::<usize>();
-            for _ in 0..pool_capacity {
-                *buf_ptr.cast::<*mut PoolInner>() = mem;
-                *buf_ptr.add(size_of::<*mut PoolInner>() + 4).cast::<u32>() = 0x80000000 | (buf_capacity as u32);
-                pool.0.push(buf_ptr.add(size_of::<*mut PoolInner>()).cast());
-                buf_ptr = buf_ptr.add(buf_size);
+            // Fill pool with pointers to where Buf objects would be. Bufs come right after the PoolInner
+            // struct and the array of pool pointers themselves. Pooled bufs contain a pointer back to
+            // their PoolInner parent structure right before the buffer header and buffer in memory. The
+            // pooled flag (most significant bit in capacity field of header) tells them to return themselves
+            // to the pool on drop instead of deallocating.
+            let mut ptr: *mut u8 = pool_end.cast(); // actual buffers start after pool pointer array
+            let buf_hdr_cap = BUF_HDR_CAPACITY_POOLED_FLAG | (buf_capacity as u32);
+            let size_of_each_buf = buf_capacity + BUFFER_HEADER_SIZE + size_of::<*mut PoolInner>();
+            while pool != pool_end {
+                *ptr.cast::<*mut PoolInner>() = mem;
+                let buf_start: *mut u32 = ptr.add(size_of::<*mut PoolInner>()).cast();
+                ptr = ptr.add(size_of_each_buf);
+                *buf_start = 0;
+                *buf_start.add(1) = buf_hdr_cap;
+                *pool = buf_start;
+                pool = pool.add(1);
             }
-            drop(pool);
 
             Self(mem.cast())
         }
+    }
+
+    /// Get the number of remaining free items in this pool.
+    #[inline]
+    pub fn pool_remaining(&self) -> usize {
+        unsafe { (*self.0).pool.lock().unwrap().0.offset_from((*self.0).pool_start) as usize }
     }
 
     /// Get a buffer from the pool, or allocate a standalone buffer if the pool is empty.
     ///
     /// Buffers allocated from the pool will return themselves on drop, while standalone buffers
     /// will automatically free their memory.
-    ///
-    /// A pool's buffer memory is not freed until all buffers returned by get() have been
-    /// dropped. Dropping a pool flags it to be dropped when the last Buf is returned but memory
-    /// isn't actually released until all Buf objects are no longer in use.
     #[inline]
     pub fn get(&self) -> Buf {
-        if let Some(b) = unsafe { (&mut *self.0).pool.lock().unwrap().0.pop() } {
-            Buf(b)
-        } else {
-            Buf::new(unsafe { (&*self.0).buf_capacity })
+        unsafe {
+            let mut pool = (*self.0).pool.lock().unwrap();
+            if pool.0 != (*self.0).pool_start {
+                pool.0 = pool.0.sub(1);
+                Buf(*pool.0)
+            } else {
+                Buf::new((*self.0).buf_capacity)
+            }
         }
     }
 }
@@ -237,11 +287,13 @@ impl Drop for Pool {
         unsafe {
             let pool_inner = &mut *self.0;
             let mut pool = pool_inner.pool.lock().unwrap();
-            if pool.0.len() == pool_inner.pool_capacity && pool.1 {
+            if pool.0 == pool_inner.pool_end && pool.1 {
                 drop(pool);
-                pool_inner.dealloc();
+                PoolInner::dealloc(pool_inner);
             } else {
-                pool.1 = true; // causes dealloc to happen when last buf returned
+                // If all buffers haven't been returned yet, set a flag to cause the buffer's drop
+                // method to deallocate the pool when this condition is met.
+                pool.1 = true;
             }
         }
     }
@@ -249,3 +301,38 @@ impl Drop for Pool {
 
 unsafe impl Send for Pool {}
 unsafe impl Sync for Pool {}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn alloc_free() {
+        let p = Pool::new(1024, 1024);
+        assert_eq!(p.pool_remaining(), 1024);
+        let mut buffers = Vec::new();
+        for _ in 0..512 {
+            buffers.push(p.get());
+        }
+        assert_eq!(p.pool_remaining(), 512);
+        for _ in 0..512 {
+            buffers.push(Buf::new(1024));
+        }
+        let bytes = [0x1; 1024];
+        for b in buffers.iter_mut() {
+            assert!(b.append(&bytes));
+        }
+        assert_eq!(p.pool_remaining(), 512);
+        buffers.clear();
+        assert_eq!(p.pool_remaining(), 1024);
+        for _ in 0..2048 {
+            buffers.push(p.get());
+        }
+        assert_eq!(p.pool_remaining(), 0);
+        for b in buffers.iter_mut() {
+            assert!(b.append(&bytes));
+        }
+        buffers.clear();
+        assert_eq!(p.pool_remaining(), 1024);
+    }
+}
