@@ -75,6 +75,14 @@ impl Buf {
         }
     }
 
+    /// Set the size of data in this buffer without checking or initializing.
+    /// This does not check that new_size does not exceed capacity or zero the content
+    /// of the buffer, so it is unsafe.
+    #[inline(always)]
+    pub unsafe fn set_size(&mut self, new_size: usize) {
+        *self.0 = new_size as u32;
+    }
+
     /// Attempt to append a slice and return true on success or false if the slice is too big.
     /// This does the same thing as std::io::Write::write() but just returns a bool.
     #[inline]
