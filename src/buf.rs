@@ -1,7 +1,9 @@
 use std::alloc::{alloc, dealloc, Layout};
 use std::io::Write;
 use std::mem::size_of;
-use std::ptr::{copy_nonoverlapping, drop_in_place, slice_from_raw_parts, slice_from_raw_parts_mut, write_bytes};
+use std::ptr::{
+    copy_nonoverlapping, drop_in_place, slice_from_raw_parts, slice_from_raw_parts_mut, write_bytes, NonNull,
+};
 use std::sync::Mutex;
 
 const INDIVIDUAL_BUFFER_ALIGN: usize = size_of::<u32>();
@@ -20,7 +22,7 @@ const BUF_HDR_CAPACITY_POOLED_FLAG: u32 = 0x80000000;
 /// Internally a Buf just consists of one pointer, making it a simple value with near zero
 /// overhead to pass between functions.
 #[repr(transparent)]
-pub struct Buf(*mut u32);
+pub struct Buf(NonNull<u32>);
 
 impl Buf {
     /// Maximum allowed capacity of an individual buffer.
@@ -40,28 +42,28 @@ impl Buf {
             assert!(!b.is_null());
             *b = 0;
             *b.add(1) = buf_capacity as u32;
-            Self(b)
+            Self(NonNull::new_unchecked(b))
         }
     }
 
     #[inline(always)]
     pub fn len(&self) -> usize {
-        unsafe { *self.0 as usize }
+        unsafe { *self.0.as_ptr() as usize }
     }
 
     #[inline(always)]
     pub fn is_empty(&self) -> bool {
-        unsafe { *self.0 == 0 }
+        unsafe { *self.0.as_ptr() == 0 }
     }
 
     #[inline(always)]
     pub fn capacity(&self) -> usize {
-        unsafe { (*self.0.add(1) & 0x7fffffff) as usize }
+        unsafe { (*self.0.as_ptr().add(1) & 0x7fffffff) as usize }
     }
 
     #[inline(always)]
     pub fn clear(&mut self) {
-        unsafe { *self.0 = 0 };
+        unsafe { *self.0.as_ptr() = 0 };
     }
 
     /// Clear buffer, resize, and fill with a value.
@@ -70,8 +72,8 @@ impl Buf {
     pub fn clear_and_resize(&mut self, new_size: usize, val: u8) {
         assert!(new_size <= self.capacity());
         unsafe {
-            *self.0 = new_size as u32;
-            write_bytes(self.0.cast::<u8>().add(8), val, new_size);
+            *self.0.as_ptr() = new_size as u32;
+            write_bytes(self.0.as_ptr().cast::<u8>().add(8), val, new_size);
         }
     }
 
@@ -80,7 +82,7 @@ impl Buf {
     /// of the buffer, so it is unsafe.
     #[inline(always)]
     pub unsafe fn set_size(&mut self, new_size: usize) {
-        *self.0 = new_size as u32;
+        *self.0.as_ptr() = new_size as u32;
     }
 
     /// Attempt to append a slice and return true on success or false if the slice is too big.
@@ -91,8 +93,8 @@ impl Buf {
         let new_len = self.len() + buf.len();
         if new_len <= self.capacity() {
             unsafe {
-                *self.0 = new_len as u32;
-                copy_nonoverlapping(buf.as_ptr(), self.0.cast::<u8>().add(8), buf.len())
+                *self.0.as_ptr() = new_len as u32;
+                copy_nonoverlapping(buf.as_ptr(), self.0.as_ptr().cast::<u8>().add(8), buf.len())
             };
             true
         } else {
@@ -102,21 +104,21 @@ impl Buf {
 
     #[inline(always)]
     pub fn as_slice(&self) -> &[u8] {
-        unsafe { &*slice_from_raw_parts(self.0.cast::<u8>().add(8), *self.0 as usize) }
+        unsafe { &*slice_from_raw_parts(self.0.as_ptr().cast::<u8>().add(8), *self.0.as_ptr() as usize) }
     }
 }
 
 impl AsRef<[u8]> for Buf {
     #[inline(always)]
     fn as_ref(&self) -> &[u8] {
-        unsafe { &*slice_from_raw_parts(self.0.cast::<u8>().add(8), *self.0 as usize) }
+        unsafe { &*slice_from_raw_parts(self.0.as_ptr().cast::<u8>().add(8), *self.0.as_ptr() as usize) }
     }
 }
 
 impl AsMut<[u8]> for Buf {
     #[inline(always)]
     fn as_mut(&mut self) -> &mut [u8] {
-        unsafe { &mut *slice_from_raw_parts_mut(self.0.cast::<u8>().add(8), *self.0 as usize) }
+        unsafe { &mut *slice_from_raw_parts_mut(self.0.as_ptr().cast::<u8>().add(8), *self.0.as_ptr() as usize) }
     }
 }
 
@@ -143,17 +145,18 @@ impl Drop for Buf {
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            let cap = *self.0.add(1);
+            let cap = *self.0.as_ptr().add(1);
             if (cap & BUF_HDR_CAPACITY_POOLED_FLAG) != 0 {
                 self.clear();
                 let pool_inner = &mut **self
                     .0
+                    .as_ptr()
                     .cast::<u8>()
                     .sub(size_of::<*mut PoolInner>())
                     .cast::<*mut PoolInner>();
                 let mut pool = pool_inner.pool.lock().unwrap();
                 assert_ne!(pool.0, pool_inner.pool_end);
-                *pool.0 = self.0;
+                *pool.0 = self.0.as_ptr();
                 pool.0 = pool.0.add(1);
                 if pool.0 == pool_inner.pool_end && pool.1 {
                     drop(pool);
@@ -161,7 +164,7 @@ impl Drop for Buf {
                 }
             } else {
                 dealloc(
-                    self.0.cast(),
+                    self.0.as_ptr().cast(),
                     Layout::from_size_align_unchecked((cap as usize) + BUFFER_HEADER_SIZE, INDIVIDUAL_BUFFER_ALIGN),
                 );
             }
@@ -282,7 +285,7 @@ impl Pool {
             let mut pool = (*self.0).pool.lock().unwrap();
             if pool.0 != (*self.0).pool_start {
                 pool.0 = pool.0.sub(1);
-                Buf(*pool.0)
+                Buf(NonNull::new_unchecked(*pool.0))
             } else {
                 Buf::new((*self.0).buf_capacity)
             }
