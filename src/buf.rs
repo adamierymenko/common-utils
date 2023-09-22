@@ -191,6 +191,7 @@ impl PartialEq for Buf {
 impl Eq for Buf {}
 
 unsafe impl Send for Buf {}
+unsafe impl Sync for Buf {}
 
 struct PoolInner {
     buf_capacity: usize,
