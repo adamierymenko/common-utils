@@ -47,6 +47,11 @@ impl Buf {
     }
 
     #[inline(always)]
+    pub fn iter(&self) -> impl Iterator<Item = &u8> {
+        self.as_slice().iter()
+    }
+
+    #[inline(always)]
     pub fn len(&self) -> usize {
         unsafe { *self.0.as_ptr() as usize }
     }
@@ -90,11 +95,12 @@ impl Buf {
     #[inline]
     #[must_use]
     pub fn append(&mut self, buf: &[u8]) -> bool {
-        let new_len = self.len() + buf.len();
+        let old_len = self.len();
+        let new_len = old_len + buf.len();
         if new_len <= self.capacity() {
             unsafe {
                 *self.0.as_ptr() = new_len as u32;
-                copy_nonoverlapping(buf.as_ptr(), self.0.as_ptr().cast::<u8>().add(8), buf.len())
+                copy_nonoverlapping(buf.as_ptr(), self.0.as_ptr().cast::<u8>().add(8 + old_len), buf.len())
             };
             true
         } else {

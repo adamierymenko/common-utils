@@ -23,6 +23,7 @@ pub mod ringbuffer;
 pub mod str;
 pub mod sync;
 pub mod tofrombytes;
+pub mod varint;
 
 /// Initial value that should be used for monotonic tick time variables.
 pub const NEVER_HAPPENED_TICKS: i64 = i64::MIN / 2;

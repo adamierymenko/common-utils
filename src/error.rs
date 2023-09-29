@@ -9,6 +9,23 @@
 use std::error::Error;
 use std::fmt::{Debug, Display};
 
+pub struct InvalidStateError;
+
+impl Display for InvalidStateError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("InvalidStateError")
+    }
+}
+
+impl Debug for InvalidStateError {
+    #[inline(always)]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        <Self as Display>::fmt(self, f)
+    }
+}
+
+impl Error for InvalidStateError {}
+
 pub struct InvalidFormatError;
 
 impl Display for InvalidFormatError {
