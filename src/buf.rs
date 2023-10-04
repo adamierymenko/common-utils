@@ -298,6 +298,16 @@ impl Pool {
             }
         }
     }
+
+    /// Get a buffer from the pool or direct allocation if min_capacity is larger than pool buffer capacity.
+    #[inline]
+    pub fn get_with_min_capacity(&self, min_capacity: usize) -> Buf {
+        if unsafe { (*self.0).buf_capacity } >= min_capacity {
+            self.get()
+        } else {
+            Buf::new(min_capacity)
+        }
+    }
 }
 
 impl Drop for Pool {
