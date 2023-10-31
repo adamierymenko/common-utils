@@ -1,9 +1,11 @@
 use std::alloc::{alloc, dealloc, Layout};
 use std::io::Write;
 use std::mem::size_of;
+use std::ops::{Index, IndexMut};
 use std::ptr::{
     copy_nonoverlapping, drop_in_place, slice_from_raw_parts, slice_from_raw_parts_mut, write_bytes, NonNull,
 };
+use std::slice::SliceIndex;
 use std::sync::Mutex;
 
 const INDIVIDUAL_BUFFER_ALIGN: usize = size_of::<u32>();
@@ -113,6 +115,21 @@ impl Buf {
         unsafe { &*slice_from_raw_parts(self.0.as_ptr().cast::<u8>().add(8), *self.0.as_ptr() as usize) }
     }
 }
+
+impl<I: SliceIndex<[u8]>> Index<I> for Buf {
+    type Output = I::Output;
+
+    #[inline]
+    fn index(&self, index: I) -> &Self::Output {
+        Index::index(self.as_ref(), index)
+    }
+}
+impl<I: SliceIndex<[u8]>> IndexMut<I> for Buf {
+    fn index_mut(&mut self, index: I) -> &mut Self::Output {
+        IndexMut::index_mut(self.as_mut(), index)
+    }
+}
+
 
 impl AsRef<[u8]> for Buf {
     #[inline(always)]
