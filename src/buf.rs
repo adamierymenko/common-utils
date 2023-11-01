@@ -148,7 +148,7 @@ impl Buf {
     }
 
     #[inline(always)]
-    pub fn copy_within<R>(&mut self, src: impl RangeBounds<usize>, dest: usize) {
+    pub fn copy_within(&mut self, src: impl RangeBounds<usize>, dest: usize) {
         self.as_mut().copy_within(src, dest)
     }
 }
