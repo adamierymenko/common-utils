@@ -1,7 +1,7 @@
 use std::alloc::{alloc, dealloc, Layout};
 use std::io::Write;
 use std::mem::size_of;
-use std::ops::{Index, IndexMut};
+use std::ops::{Index, IndexMut, RangeBounds};
 use std::ptr::{
     copy_nonoverlapping, drop_in_place, slice_from_raw_parts, slice_from_raw_parts_mut, write_bytes, NonNull,
 };
@@ -72,6 +72,19 @@ impl Buf {
     pub fn clear(&mut self) {
         unsafe { *self.0.as_ptr() = 0 };
     }
+    /// Resize the buffer, writing `val` into any new indexes that were created.
+    /// This will panic if `new_size` exceeds this buffer's capacity.
+    #[inline]
+    pub fn resize(&mut self, new_size: usize, val: u8) {
+        assert!(new_size <= self.capacity());
+        unsafe {
+            let old_size = *self.0.as_ptr() as usize;
+            *self.0.as_ptr() = new_size as u32;
+            if new_size >= old_size {
+                write_bytes(self.0.as_ptr().cast::<u8>().add(8 + old_size), val, new_size - old_size);
+            }
+        }
+    }
 
     /// Clear buffer, resize, and fill with a value.
     /// This will panic if `new_size` exceeds this buffer's capacity.
@@ -94,6 +107,7 @@ impl Buf {
 
     /// Attempt to append a slice and return true on success or false if the slice is too big.
     /// This does the same thing as std::io::Write::write() but just returns a bool.
+    /// The buffer will not have mutated if false is returned.
     #[inline]
     #[must_use]
     pub fn append(&mut self, buf: &[u8]) -> bool {
@@ -109,10 +123,33 @@ impl Buf {
             false
         }
     }
+    /// Attempt to append `val` to the buffer `num` times.
+    /// Returns true on success or false if capacity is exceeded.
+    /// The buffer will not have mutated if false is returned.
+    #[inline]
+    #[must_use]
+    pub fn repeat(&mut self, num: usize, val: u8) -> bool {
+        let old_len = self.len();
+        let new_len = old_len + num;
+        if new_len <= self.capacity() {
+            unsafe {
+                *self.0.as_ptr() = new_len as u32;
+                write_bytes(self.0.as_ptr().cast::<u8>().add(8 + old_len), val, num);
+            };
+            true
+        } else {
+            false
+        }
+    }
 
     #[inline(always)]
     pub fn as_slice(&self) -> &[u8] {
-        unsafe { &*slice_from_raw_parts(self.0.as_ptr().cast::<u8>().add(8), *self.0.as_ptr() as usize) }
+        self.as_ref()
+    }
+
+    #[inline(always)]
+    pub fn copy_within<R>(&mut self, src: impl RangeBounds<usize>, dest: usize) {
+        self.as_mut().copy_within(src, dest)
     }
 }
 
@@ -125,11 +162,11 @@ impl<I: SliceIndex<[u8]>> Index<I> for Buf {
     }
 }
 impl<I: SliceIndex<[u8]>> IndexMut<I> for Buf {
+    #[inline]
     fn index_mut(&mut self, index: I) -> &mut Self::Output {
         IndexMut::index_mut(self.as_mut(), index)
     }
 }
-
 
 impl AsRef<[u8]> for Buf {
     #[inline(always)]
