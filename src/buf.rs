@@ -116,13 +116,31 @@ impl Buf {
         if new_len <= self.capacity() {
             unsafe {
                 *self.0.as_ptr() = new_len as u32;
-                copy_nonoverlapping(buf.as_ptr(), self.0.as_ptr().cast::<u8>().add(8 + old_len), buf.len())
-            };
+                copy_nonoverlapping(buf.as_ptr(), self.0.as_ptr().cast::<u8>().add(8 + old_len), buf.len());
+            }
             true
         } else {
             false
         }
     }
+
+    /// Push a single byte, returning true on success.
+    #[inline]
+    #[must_use]
+    pub fn push(&mut self, byte: u8) -> bool {
+        let old_len = self.len();
+        let new_len = old_len + 1;
+        if new_len <= self.capacity() {
+            unsafe {
+                *self.0.as_ptr() = new_len as u32;
+                *self.0.as_ptr().cast::<u8>().add(8 + old_len) = byte;
+            }
+            true
+        } else {
+            false
+        }
+    }
+
     /// Attempt to append `val` to the buffer `num` times.
     /// Returns true on success or false if capacity is exceeded.
     /// The buffer will not have mutated if false is returned.
@@ -135,7 +153,7 @@ impl Buf {
             unsafe {
                 *self.0.as_ptr() = new_len as u32;
                 write_bytes(self.0.as_ptr().cast::<u8>().add(8 + old_len), val, num);
-            };
+            }
             true
         } else {
             false
