@@ -19,7 +19,6 @@ pub mod hex;
 pub mod inetaddress;
 pub mod io;
 pub mod memory;
-pub mod oncearc;
 pub mod ringbuffer;
 pub mod str;
 pub mod sync;
