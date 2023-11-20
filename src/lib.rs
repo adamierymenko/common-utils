@@ -95,6 +95,14 @@ pub fn slice_is_empty<T>(s: &[T]) -> bool {
     s.is_empty()
 }
 
+/// Checks if a value is equal to its default.
+/// This could be inefficient if default() is non-trivial. Should be used for things like
+/// eliding serialization of zeroes and other default values with serde.
+#[inline(always)]
+pub fn is_default<V: Default + PartialEq>(v: &V) -> bool {
+    V::default().eq(v)
+}
+
 #[cold]
 #[inline(never)]
 pub extern "C" fn unlikely_branch() {}
