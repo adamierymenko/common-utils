@@ -103,6 +103,42 @@ pub fn is_default<V: Default + PartialEq>(v: &V) -> bool {
     V::default().eq(v)
 }
 
+/// Allocate and initialize a large array with a simple type.
+/// This is a workaround for the fact that Box::new([ARRAY]) will overflow the stack if the
+/// array is too large, a known issue with current Rust. It can go away when this is fixed.
+/// None is returned if a memory allocation error occurs.
+#[inline]
+pub fn alloc_array<T: Copy, const N: usize>(initial_value: T) -> Option<Box<[T; N]>> {
+    unsafe {
+        let mem: *mut T = std::alloc::alloc(std::alloc::Layout::new::<[T; N]>()).cast();
+        if mem.is_null() {
+            return None;
+        }
+        for i in 0..N {
+            mem.add(i).write(initial_value);
+        }
+        return Some(Box::from_raw(mem.cast()));
+    }
+}
+
+/// Allocate and initialize a large array using a generator.
+/// This is a workaround for the fact that Box::new([ARRAY]) will overflow the stack if the
+/// array is too large, a known issue with current Rust. It can go away when this is fixed.
+/// None is returned if a memory allocation error occurs.
+#[inline]
+pub fn alloc_array_with<T, F: FnMut(usize) -> T, const N: usize>(mut f: F) -> Option<Box<[T; N]>> {
+    unsafe {
+        let mem: *mut T = std::alloc::alloc(std::alloc::Layout::new::<[T; N]>()).cast();
+        if mem.is_null() {
+            return None;
+        }
+        for i in 0..N {
+            mem.add(i).write(f(i));
+        }
+        return Some(Box::from_raw(mem.cast()));
+    }
+}
+
 #[cold]
 #[inline(never)]
 pub extern "C" fn unlikely_branch() {}
