@@ -47,6 +47,11 @@ impl Buf {
             Self(NonNull::new_unchecked(b))
         }
     }
+    pub fn create_from(buffer: &[u8]) -> Buf {
+        let mut buf = Self::new(buffer.len());
+        let _ = buf.append(buffer);
+        buf
+    }
 
     #[inline(always)]
     pub fn iter(&self) -> impl Iterator<Item = &u8> {
@@ -369,6 +374,11 @@ impl Pool {
                 Buf::new((*self.0).buf_capacity)
             }
         }
+    }
+    pub fn create_from(&self, buffer: &[u8]) -> Buf {
+        let mut buf = self.get_with_min_capacity(buffer.len());
+        let _ = buf.append(buffer);
+        buf
     }
 
     /// Get a buffer from the pool or direct allocation if min_capacity is larger than pool buffer capacity.
