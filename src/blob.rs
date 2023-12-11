@@ -9,14 +9,12 @@
 use std::array::TryFromSliceError;
 use std::fmt::Debug;
 use std::hash::Hash;
-use std::ops::Deref;
-use std::ops::DerefMut;
+use std::ops::{Deref, DerefMut};
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use zeroize::Zeroize;
 
-use crate::base64;
-use crate::hex;
+use crate::{base64, hex};
 
 /// Fixed size Serde serializable byte array.
 /// This makes it easier to deal with blobs larger than 32 bytes (due to serde array limitations)

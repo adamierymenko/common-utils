@@ -6,7 +6,8 @@
  * https://www.zerotier.com/
  */
 
-use base64::{engine::general_purpose, Engine as _};
+use base64::engine::general_purpose;
+use base64::Engine as _;
 
 /// Encode a byte slice as Base64 using the URL-safe alphabet without padding
 #[inline(always)]
