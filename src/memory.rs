@@ -12,6 +12,7 @@
 #[allow(unused_imports)]
 use std::mem::{needs_drop, size_of, MaybeUninit};
 
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 #[allow(unused_imports)]
 use std::ptr::copy_nonoverlapping;
 
@@ -77,4 +78,15 @@ pub fn cast_to_struct<T: FlatBuffer>(b: &[u8]) -> &T {
     assert!(b.len() >= size_of::<T>());
     assert!(!std::mem::needs_drop::<T>());
     unsafe { &*b.as_ptr().cast() }
+}
+
+/// The missing get-ip-octets-as-reference function for IpAddr
+#[inline(always)]
+pub fn ip_octets_ref(sa: &IpAddr) -> &[u8] {
+    assert_eq!(size_of::<Ipv4Addr>(), 4);
+    assert_eq!(size_of::<Ipv6Addr>(), 16);
+    match sa {
+        IpAddr::V4(ip4) => unsafe { &*(ip4 as *const Ipv4Addr).cast::<[u8; 4]>() },
+        IpAddr::V6(ip6) => unsafe { &*(ip6 as *const Ipv6Addr).cast::<[u8; 16]>() },
+    }
 }
