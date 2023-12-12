@@ -6,6 +6,8 @@
  * https://www.zerotier.com/
  */
 
+use serde::de::Unexpected;
+
 use crate::hex::HEX_CHARS;
 
 /// Escape non-ASCII-printable characters in a string.
@@ -53,4 +55,26 @@ pub fn unescape(s: &str) -> Vec<u8> {
         }
     }
     b
+}
+
+#[test]
+fn escape_unescape() {
+    let s = "\\000";
+    let unescaped = unescape(s);
+    let escaped = escape(&unescaped);
+    assert_eq!(escaped, "\\000");
+    assert_eq!(unescaped[0], 0);
+    // short string
+    let s = "\\00";
+    let unescaped = unescape(s);
+    let escaped = escape(&unescaped);
+    assert_eq!(escaped, "\\00");
+    assert_eq!(unescaped[0], 0);
+    // string containing upper and lower case hex
+    let s = "\\A0a";
+    let unescaped = unescape(s);
+    let escaped = escape(&unescaped);
+    assert_eq!(escaped, "\\a0a");
+    assert_eq!(unescaped[0], 160); // A0
+    assert_eq!(unescaped[1], 97); // A
 }

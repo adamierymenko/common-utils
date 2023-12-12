@@ -48,7 +48,7 @@ impl Buf {
         }
     }
     pub fn create_from(buffer: &[u8]) -> Buf {
-        let mut buf = Self::new((buffer.len() + 7)/8*8);
+        let mut buf = Self::new((buffer.len() + 7) / 8 * 8);
         let _ = buf.append(buffer);
         buf
     }

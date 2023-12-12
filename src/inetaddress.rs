@@ -1227,4 +1227,22 @@ mod tests {
         let ip = InetAddress::from_str("1.2.3.4/1234").unwrap();
         assert_eq!("1.2.3.4/1234", ip.to_string());
     }
+
+    #[test]
+    fn ip_from_invalid_string() {
+        let ip4 = InetAddress::from_str("-1.-2.-3.-4/1234");
+        assert!(ip4.is_err());
+        let ip6 = InetAddress::from_str("-2603:6010:6e00:1118:d92a:ab88:4dfb:670a/1234");
+        assert!(ip6.is_err());
+    }
+
+    #[test]
+    fn zero() {
+        let mut ip4 = InetAddress::from_str("1.2.3.4/1234").unwrap();
+        ip4.zero();
+        assert!(ip4.is_nil());
+        let mut ip6 = InetAddress::from_str("2603:6010:6e00:1118:d92a:ab88:4dfb:670a/1234").unwrap();
+        ip6.zero();
+        assert!(ip6.is_nil());
+    }
 }

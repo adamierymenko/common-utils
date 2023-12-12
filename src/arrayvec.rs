@@ -418,7 +418,19 @@ mod tests {
     use super::ArrayVec;
 
     #[test]
-    fn array_vec() {
+    fn popability() {
+        let mut v = ArrayVec::<usize, 128>::new();
+        for i in 0..128 {
+            v.push(i);
+        }
+        assert_eq!(v.len(), 128);
+        for _ in 0..128 {
+            assert!(v.pop().is_some());
+        }
+        assert!(v.pop().is_none());
+    }
+    #[test]
+    fn bounds() {
         let mut v = ArrayVec::<usize, 128>::new();
         for i in 0..128 {
             v.push(i);
@@ -426,9 +438,33 @@ mod tests {
         assert_eq!(v.len(), 128);
         assert!(v.try_push(1000).is_err());
         assert_eq!(v.len(), 128);
-        for _ in 0..128 {
-            assert!(v.pop().is_some());
+    }
+    #[test]
+    fn clear() {
+        let mut v = ArrayVec::<usize, 128>::new();
+        for i in 0..128 {
+            v.push(i);
         }
+        assert_eq!(v.len(), 128);
+        v.clear();
         assert!(v.pop().is_none());
+    }
+    #[test]
+    fn order() {
+        let mut v = ArrayVec::<usize, 128>::new();
+        for i in 0..128 {
+            v.push(i);
+        }
+        assert_eq!(v.len(), 128);
+
+        assert!(v.first() == Some(&0));
+        assert!(v.last() == Some(&127));
+
+        let size: usize = 128;
+        for i in 0..size {
+            let popped_val = v.pop();
+            assert!(popped_val.is_some());
+            assert!(popped_val == Some((size - 1) - i));
+        }
     }
 }

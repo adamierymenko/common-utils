@@ -91,6 +91,8 @@ impl<'a, T, const C: usize> Iterator for RingBufferIterator<'a, T, C> {
 
 #[cfg(test)]
 mod tests {
+    use std::default;
+
     use super::*;
 
     #[test]
@@ -116,5 +118,10 @@ mod tests {
         for (i, j) in tmp.iter().zip(tmp2.iter()) {
             assert_eq!(*i, *j);
         }
+    }
+    #[test]
+    fn default() {
+        let mut rb: RingBuffer<i32, 8> = RingBuffer::default();
+        rb.add(42i32);
     }
 }

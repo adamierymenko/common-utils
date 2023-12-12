@@ -145,8 +145,9 @@ pub extern "C" fn unlikely_branch() {}
 
 #[cfg(test)]
 mod tests {
-    use super::ms_monotonic;
     use std::time::Duration;
+
+    use super::ms_monotonic;
 
     #[test]
     fn monotonic_clock_sanity_check() {

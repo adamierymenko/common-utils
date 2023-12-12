@@ -97,6 +97,7 @@ mod tests {
             assert!(write(&mut t, ii).is_ok());
             let mut t2 = t.as_slice();
             assert_eq!(read(&mut t2).unwrap().0, ii);
+            assert_eq!(ii, decode(&t).unwrap().0);
         }
     }
 }
