@@ -6,6 +6,7 @@
  * https://www.zerotier.com/
  */
 
+use std::mem::transmute;
 use std::ops::Deref;
 
 /// Container for an object that never dies, by design (leaks on drop)
@@ -19,20 +20,19 @@ use std::ops::Deref;
 ///
 /// Semantics are similar to Arc<> in that only non-mutable references can be obtained and
 /// the object can be cloned. These can also be copied, as they are just pointers.
-#[derive(Clone, Copy)]
-pub struct Immortal<T>(*mut T);
+pub struct Immortal<T: 'static>(&'static T);
 
 impl<T> Immortal<T> {
     #[inline(always)]
     pub fn new(obj: T) -> Self {
-        Self(Box::into_raw(Box::new(obj)))
+        Self(unsafe { transmute(&*Box::into_raw(Box::new(obj))) })
     }
 }
 
 impl<T> AsRef<T> for Immortal<T> {
     #[inline(always)]
-    fn as_ref(&self) -> &T {
-        unsafe { &*self.0 }
+    fn as_ref(&self) -> &'static T {
+        self.0
     }
 }
 
@@ -40,8 +40,15 @@ impl<T> Deref for Immortal<T> {
     type Target = T;
 
     #[inline(always)]
-    fn deref(&self) -> &Self::Target {
-        unsafe { &*self.0 }
+    fn deref(&self) -> &'static Self::Target {
+        self.0
+    }
+}
+
+impl<T> Clone for Immortal<T> {
+    #[inline(always)]
+    fn clone(&self) -> Self {
+        Self(self.0)
     }
 }
 
