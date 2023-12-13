@@ -16,6 +16,7 @@ pub mod error;
 pub mod exitcode;
 pub mod gate;
 pub mod hex;
+pub mod immortal;
 pub mod inetaddress;
 pub mod io;
 pub mod memory;
