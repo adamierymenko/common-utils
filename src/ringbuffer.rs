@@ -91,7 +91,6 @@ impl<'a, T, const C: usize> Iterator for RingBufferIterator<'a, T, C> {
 
 #[cfg(test)]
 mod tests {
-    use std::default;
 
     use super::*;
 

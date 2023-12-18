@@ -6,8 +6,6 @@
  * https://www.zerotier.com/
  */
 
-use serde::de::Unexpected;
-
 use crate::hex::HEX_CHARS;
 
 /// Escape non-ASCII-printable characters in a string.

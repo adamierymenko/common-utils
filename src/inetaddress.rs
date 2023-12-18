@@ -1215,6 +1215,45 @@ mod tests {
     }
 
     #[test]
+    fn eq() {
+        let ip4_a = InetAddress::from_str("1.2.3.4/1234").unwrap();
+        let ip6_a = InetAddress::from_str("2603:6010:6e00:1118:d92a:ab88:4dfb:670a/1234").unwrap();
+        let ip4_b = InetAddress::from_str("1.2.3.4/1234").unwrap();
+        let ip6_b = InetAddress::from_str("2603:6010:6e00:1118:d92a:ab88:4dfb:670a/1234").unwrap();
+        let ip4_c = InetAddress::from_str("1.2.3.5/1234").unwrap();
+        let ip6_c = InetAddress::from_str("3603:6010:6e00:1118:d92a:ab88:4dfb:670a/1234").unwrap();
+        assert!(!ip4_a.clone().eq(&ip6_a));
+        assert!(ip4_a.eq(&ip4_b));
+        assert!(ip6_a.eq(&ip6_b));
+        assert!(!ip6_a.eq(&ip6_c));
+        assert!(!ip4_a.eq(&ip4_c));
+    }
+
+    #[test]
+    fn try_into() {
+        // Convert to various types and back
+        let ip4 = InetAddress::from_str("1.2.3.4/1234").unwrap();
+        let ipaddr4: IpAddr = ip4.try_into().unwrap();
+        assert!(ipaddr4.is_ipv4());
+        let new_ip4 = InetAddress::from(ipaddr4);
+        assert!(new_ip4.is_ipv4());
+
+        let ip6 = InetAddress::from_str("2603:6010:6e00:1118:d92a:ab88:4dfb:670a/1234").unwrap();
+        let ipaddr6: IpAddr = ip6.try_into().unwrap();
+        assert!(ipaddr6.is_ipv6());
+        let new_ip6 = InetAddress::from(ipaddr6);
+        assert!(new_ip6.is_ipv6());
+    }
+
+    #[test]
+    fn tofrom_bytes() {
+        let ip4 = InetAddress::from_str("1.2.3.4/1234").unwrap();
+        let bytes = ip4.to_bytes();
+        let ip4_from_bytes = InetAddress::from_bytes(&bytes).unwrap();
+        assert!(ip4.eq(&ip4_from_bytes));
+    }
+
+    #[test]
     fn ipv6_string() {
         let ip = InetAddress::from_str("2603:6010:6e00:1118:d92a:ab88:4dfb:670a/1234").unwrap();
         assert_eq!("2603:6010:6e00:1118:d92a:ab88:4dfb:670a/1234", ip.to_string());
